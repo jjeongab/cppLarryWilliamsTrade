@@ -232,9 +232,9 @@ void runOKXTradingBot() {
     std::string symbol = symbolInput.empty() ? "BTC-USDT" : symbolInput;
     
     std::string timeframeInput;
-    std::cout << "Enter timeframe (1m, 5m, 15m, 1h, 4h, 1d - default: 1h): ";
+    std::cout << "Enter timeframe (1m, 5m, 15m, 1H, 4H, 1H - default: 1H): ";
     std::getline(std::cin, timeframeInput);
-    std::string timeframe = timeframeInput.empty() ? "1h" : timeframeInput;
+    std::string timeframe = timeframeInput.empty() ? "1H" : timeframeInput;
     
     std::string breakoutFactorInput;
     std::cout << "Enter breakout factor (0.1-1.0, default: 0.3): ";
@@ -300,9 +300,10 @@ void runOKXTradingBot() {
     if (timeframe == "1m") channel = "candle1m";
     else if (timeframe == "5m") channel = "candle5m";
     else if (timeframe == "15m") channel = "candle15m";
-    else if (timeframe == "1h") channel = "candle1H";
-    else if (timeframe == "4h") channel = "candle4H";
-    else if (timeframe == "1d") channel = "candle1D";
+    else if (timeframe == "30m") channel = "candle30m";
+    else if (timeframe == "1h") channel = "candle1H";  // lowercase 'h' for WebSocket
+    else if (timeframe == "4h") channel = "candle4H";  // lowercase 'h' for WebSocket
+    else if (timeframe == "1d") channel = "candle1D";  // lowercase 'd' for WebSocket
     else channel = "candle1H"; // Default
     
     bool connected = okx->connectWebSocket(symbol, channel);

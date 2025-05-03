@@ -46,7 +46,7 @@ bool OKXExchange::connectWebSocket(const std::string& symbol, const std::string&
             handleWebSocketMessage(msg);
         });
         
-        websocket->setConnectionCallback([this,&channel, &symbol](bool connected) {
+        websocket->setConnectionCallback([this, symbol, channel](bool connected) {
             std::cout << "OKX WebSocket " << (connected ? "connected" : "disconnected") << std::endl;
             
             // Subscribe to channels after connection is established
@@ -54,33 +54,59 @@ bool OKXExchange::connectWebSocket(const std::string& symbol, const std::string&
                 // Add a small delay to ensure the connection is fully established
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 
-                // Send subscription message
-                json subscribeMsg = {
-                    {"op", "subscribe"},
-                    {"args", json::array()}
-                };
+                // For private channels, we need to login first
+                bool isPrivateChannel = (channel == "orders" || channel == "positions" || 
+                                         channel == "balance_and_position" || channel == "account");
                 
-                // Add subscription args
-                if (channel == "tickers") {
-                    subscribeMsg["args"].push_back({
-                        {"channel", "tickers"},
-                        {"instId", symbol}
-                    });
-                } else if (channel.find("candle") == 0) {
-                    // Extract interval from channel name (e.g., "candle1m" -> "1m")
-                    std::string interval = channel.substr(6);
-                    subscribeMsg["args"].push_back({
-                        {"channel", "candle" + interval},
-                        {"instId", symbol}
-                    });
-                } else if (channel == "trades") {
-                    subscribeMsg["args"].push_back({
-                        {"channel", "trades"},
-                        {"instId", symbol}
-                    });
+                if (isPrivateChannel) {
+                    // Login to the WebSocket API
+                    bool loginSuccess = webSocketLogin();
+                    if (!loginSuccess) {
+                        std::cerr << "Failed to login to OKX WebSocket API" << std::endl;
+                        return;
+                    }
+                    
+                    // Add a delay to ensure login is processed
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                 }
                 
-                websocket->send(subscribeMsg.dump());
+                // Now subscribe to the channel
+                std::stringstream ss;
+                ss << "{\"op\":\"subscribe\",\"args\":[";
+                
+                if (channel == "tickers") {
+                    ss << "{\"channel\":\"tickers\",\"instId\":\"" << symbol << "\"}";
+                } else if (channel.find("candle") == 0) {
+                    // Extract timeframe and ensure lowercase
+                    std::string timeframe = channel.substr(6);
+                    if (timeframe.find('H') != std::string::npos or timeframe.find('D') != std::string::npos) {
+                        std::transform(timeframe.begin(), timeframe.end(), timeframe.begin(), ::toupper);
+                    }
+                    else{
+                        std::transform(timeframe.begin(), timeframe.end(), timeframe.begin(), ::tolower);
+                    }
+                    ss << "{\"channel\":\"candle" << timeframe << "\",\"instId\":\"" << symbol << "\"}";
+                } else if (channel == "trades") {
+                    ss << "{\"channel\":\"trades\",\"instId\":\"" << symbol << "\"}";
+                } else if (channel == "orders") {
+                    // Private channel for orders
+                    ss << "{\"channel\":\"orders\",\"instType\":\"SPOT\"}";
+                } else if (channel == "positions") {
+                    // Private channel for positions
+                    ss << "{\"channel\":\"positions\",\"instType\":\"SPOT\"}";
+                } else if (channel == "balance_and_position") {
+                    // Private channel for balance and position updates
+                    ss << "{\"channel\":\"balance_and_position\"}";
+                } else if (channel == "account") {
+                    // Private channel for account updates
+                    ss << "{\"channel\":\"account\"}";
+                }
+                
+                ss << "]}";
+                
+                std::string subscribeMsg = ss.str();
+                std::cout << "Sending subscription: " << subscribeMsg << std::endl;
+                websocket->send(subscribeMsg);
             }
         });
         
@@ -90,7 +116,15 @@ bool OKXExchange::connectWebSocket(const std::string& symbol, const std::string&
     }
     
     // OKX WebSocket URL
-    std::string wsUrl = "wss://ws.okx.com:8443/ws/v5/public";
+    std::string wsUrl;
+    if (channel.find("candle") == 0) {
+        wsUrl = "wss://ws.okx.com:8443/ws/v5/business";
+    } else if (channel == "orders" || channel == "positions" || 
+               channel == "balance_and_position" || channel == "account") {
+        wsUrl = "wss://ws.okx.com:8443/ws/v5/private";
+    } else {
+        wsUrl = "wss://ws.okx.com:8443/ws/v5/public";
+    }
     
     // Connect to WebSocket
     return websocket->connect(wsUrl);
